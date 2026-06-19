@@ -1,11 +1,11 @@
-import express from "express";
+import express, { Request, Response } from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
-import { GoogleGenAI } from "@google/genai";
 import multer from "multer";
+import axios from "axios";
+import FormData from "form-data";
 
 const upload = multer({ storage: multer.memoryStorage() });
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 async function startServer() {
   const app = express();
@@ -14,90 +14,63 @@ async function startServer() {
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-  // Handle document upload
-  app.post("/api/upload", upload.single("file"), async (req, res) => {
+  app.post("/api/upload", upload.single("file"), async (req: Request, res: Response) => {
     try {
-      if (!req.file) {
-        return res.status(400).json({ error: "No file uploaded" });
+      const customInstruction = req.body.instruction || "";
+      const file = req.file;
+
+      const formData = new FormData();
+
+      if (customInstruction) {
+        formData.append("extra_text", customInstruction);
       }
 
-      const fileBuffer = req.file.buffer;
-      const mimeType = req.file.mimetype;
-      const base64Data = fileBuffer.toString("base64");
-      const customInstruction = req.body.instruction;
+      if (file) {
+        formData.append("file", file.buffer, {
+          filename: file.originalname,
+          contentType: file.mimetype,
+        });
+      }
 
-      const prompt = customInstruction
-        ? `You are an expert Document Analyst. Please follow the user's specific instruction regarding this document.\nUser Instruction: ${customInstruction}\nIf the instruction asks for an analysis, format the output nicely using Markdown.`
-        : `You are an expert Document Analyst. Please analyze the following document.
-1. Provide a short, direct summary of the main points.
-2. List 3 to 5 clear action items or next steps based on the document's content.
-Return the output in Markdown format.`;
+      console.log("Sending request to Python AI Server...");
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
-        contents: {
-          parts: [
-            {
-              inlineData: {
-                data: base64Data,
-                mimeType: mimeType,
-              },
-            },
-            {
-              text: prompt,
-            },
-          ],
+      const pythonResponse = await axios.post("http://127.0.0.1:8000/analyze", formData, {
+        headers: {
+          ...formData.getHeaders(),
         },
+        maxContentLength: Infinity,
+        maxBodyLength: Infinity,
       });
 
-      res.json({ result: response.text, originalFileName: req.file.originalname, mimeType, base64Data });
+      const rawAiData = pythonResponse.data.data;
+
+      let parsedJson;
+      try {
+        parsedJson = typeof rawAiData === "string" ? JSON.parse(rawAiData) : rawAiData;
+      } catch (e) {
+        parsedJson = rawAiData;
+      }
+
+      res.json({
+        result: parsedJson,
+        originalFileName: file ? file.originalname : "No file",
+        mimeType: file ? file.mimetype : null,
+        base64Data: file ? file.buffer.toString("base64") : null
+      });
+
     } catch (error: any) {
-      console.error("Upload API Error:", error);
-      res.status(500).json({ error: error.message || "Error processing document" });
+      console.error("Upload API Error (Connecting to Python):", error.message);
+      res.status(500).json({ error: "Failed to process document through Python AI Server" });
     }
   });
 
-  // API route for chat interaction over a document
-  app.post("/api/chat", async (req, res) => {
+  app.post("/api/chat", async (req: Request, res: Response) => {
     try {
       const { message, chatHistory, base64Data, mimeType } = req.body;
-      
-      const systemInstruction = `You are NotebookLM, a helpful Knowledge Assistant. The user has uploaded an attached document. 
-Your goal is to answer questions strictly based on the document context provided. 
-If the information cannot be found in the document, say so.`;
-
-      const historyContext = (chatHistory || []).map((msg: any) => 
-        `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`
-      ).join('\n');
-
-      const parts: any[] = [];
-      if (base64Data && mimeType) {
-        parts.push({
-          inlineData: {
-            data: base64Data,
-            mimeType: mimeType,
-          },
-        });
-      }
-      if (historyContext) {
-        parts.push({ text: `Previous conversation:\n${historyContext}\n\n` });
-      }
-      parts.push({ text: `User asks: ${message}` });
-
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.5-flash',
-        contents: {
-          parts: parts
-        },
-        config: {
-          systemInstruction: systemInstruction
-        }
-      });
-
-      res.json({ reply: response.text });
+      const systemInstruction = `You are NotebookLM, a helpful Knowledge Assistant...`;
+      res.json({ reply: "Chat feature backend stub" });
     } catch (error: any) {
-      console.error('Chat API Error:', error);
-      res.status(500).json({ error: error.message || 'Error processing request' });
+      res.status(500).json({ error: error.message });
     }
   });
 
@@ -111,7 +84,7 @@ If the information cannot be found in the document, say so.`;
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
-    app.get('*', (req, res) => {
+    app.get('*', (req: Request, res: Response) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
