@@ -1,14 +1,18 @@
 import os
+import shutil
 import time
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from google import genai
 from google.genai import types
 
 API_KEY = os.environ.get("GEMINI_API_KEY")
-
 if not API_KEY:
-    API_KEY = "x"
+    API_KEY = "x"  
 
 client = genai.Client(api_key=API_KEY)
+
+model_name = "gemini-2.5-flash"
 
 system_instruction = """
 Use clear, simple, and reassuring language throughout the response. Provide additional detail whenever the situation requires further explanation. Structure the response using the following sections:
@@ -157,19 +161,16 @@ University Resources
 External Resources
 Important Deadlines
 Prioritized Checklist
-
 """
 
-model_name = "gemini-2.5-flash"
-
 def detect_distress(text):
+    if not text: return False
     t = text.lower()
     distress_words = ["can't pay", "cannot pay", "financial crisis", "no money", "poor", "struggling", "hard time", "broke", "unemployed", "no income"]
     return any(word in t for word in distress_words)
 
-memory_context = ""
-
 def classify_intent(text):
+    if not text: return "general"
     t = text.lower()
     if any(word in t for word in ["paid", "but", "still", "charged", "balance", "receipt"]): return "payment_issue"
     if any(word in t for word in ["why", "reason", "explain"]): return "confusion"
@@ -181,35 +182,8 @@ def build_input(user_input):
     distress = detect_distress(user_input)
     return f"\n[USER INTENT: {intent}]\n[USER DISTRESS: {distress}]\n\n{user_input}"
 
-def ask_file_path():
-    while True:
-        path = input("Enter PDF or Image path (PNG, JPG, JPEG) [or press Enter to skip]: ").strip().strip('"')
-        if not path: 
-            return None
-        
-        if os.path.isfile(path):
-            allowed_extensions = (".pdf", ".png", ".jpg", ".jpeg")
-            if path.lower().endswith(allowed_extensions):
-                return path
-            else:
-                print("Unsupported file format. Please provide a PDF or an Image (PNG, JPG, JPEG).")
-        else:
-            print("File not found. Try again or press Enter to skip.")
-
-def ask_extra_text():
-    text = input("Enter additional text (optional, press Enter to skip): ").strip()
-    return text if text else None
-
-def get_user_inputs():
-    while True:
-        file_path = ask_file_path()
-        extra_text = ask_extra_text()
-        if not file_path and not extra_text:
-            print("You did not provide any input. Please try again.\n")
-            continue
-        return file_path, extra_text
-
-def start_project_session(file_path, extra_text=None):
+# 4. دالة بدء الجلسة الخاصة بـ Gemini
+def start_project_session(file_path=None, extra_text=None):
     try:
         config = types.GenerateContentConfig(
             system_instruction=system_instruction,
@@ -221,21 +195,15 @@ def start_project_session(file_path, extra_text=None):
         parts = []
         
         if file_path and os.path.exists(file_path):
-            print(f"Uploading file: {os.path.basename(file_path)} ...")
             uploaded_file = client.files.upload(file=file_path)
             
             while uploaded_file.state.name == "PROCESSING":
-                print("Processing file...")
                 time.sleep(2)
                 uploaded_file = client.files.get(name=uploaded_file.name)
             
-            if uploaded_file.state.name == "FAILED":
-                print("File processing failed. Creating session without the file.")
-            else:
+            if uploaded_file.state.name != "FAILED":
                 parts.append(types.Part.from_uri(file_uri=uploaded_file.uri, mime_type=uploaded_file.mime_type))
                 parts.append(types.Part.from_text(text="Please read, analyze, and understand this file carefully."))
-        else:
-            print("No file provided or file not found. Continuing with text context only.")
 
         if extra_text:
             parts.append(types.Part.from_text(text=f"Additional user context:\n{extra_text}"))
@@ -251,106 +219,62 @@ def start_project_session(file_path, extra_text=None):
         return chat
 
     except Exception as e:
-        print(f"Initialization failed: {e}")
-        return None
+        raise Exception(f"Initialization failed: {e}")
 
-file_path, extra_text = get_user_inputs()
-MAX_RETRIES = 3
-attempt = 0
-session = None
+app = FastAPI(title="LegalEase AI API")
 
-while attempt < MAX_RETRIES and session is None:
-    session = start_project_session(file_path, extra_text)
-    if session is None:
-        attempt += 1
-        print(f"Session creation failed. Retrying ({attempt}/{MAX_RETRIES})...")
-        time.sleep(2)
-
-if session is None:
-    print("Failed to create session after multiple attempts. Exiting safely.")
-    exit()
-
-print("\n--- Analyzing Document / Context... ---")
-
-first_response = session.send_message_stream(
-    """
-Analyze the provided context immediately and provide the output in English, strictly following the structured rules defined in your System Instructions.
-
-Additionally, return the final answer as valid JSON only using the following schema:
-
-{
-  "document_type": "",
-  "situation": {
-    "summary": "",
-    "severity": "",
-    "source_pages": []
-  },
-  "problem_explanation": "",
-  "student_actions": [
-    {
-      "priority": 1,
-      "action": "",
-      "reason": ""
-    }
-  ],
-  "university_policy": [
-    {
-      "title": "",
-      "details": "",
-      "source_url": ""
-    }
-  ],
-  "organizations": [
-    {
-      "name": "",
-      "type": "",
-      "services": "",
-      "eligibility": "",
-      "source_url": ""
-    }
-  ],
-  "university_resources": [],
-  "external_resources": [],
-  "deadlines": [],
-  "checklist": [],
-  "contacts": [],
-  "sources": []
-}
-
-Requirements:
-- Follow ALL System Instruction rules.
-- Preserve all research requirements.
-- Preserve all source requirements.
-- Preserve all policy research requirements.
-- Return JSON only.
-- Do not return Markdown.
-- Do not use code fences.
-- Do not add explanations outside the JSON.
-"""
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], 
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
-for chunk in first_response:
-    print(chunk.text, end="", flush=True)
-print() 
 
-while True:
-    user_input = input("\nYou: ")
-    if user_input.lower() == "exit":
-        break
+@app.post("/analyze")
+async def analyze_document(
+    extra_text: str = Form(None), 
+    file: UploadFile = File(None)
+):
+    temp_file_path = None
+    
+    if file:
+        allowed_extensions = (".pdf", ".png", ".jpg", ".jpeg")
+        if not file.filename.lower().endswith(allowed_extensions):
+            raise HTTPException(status_code=400, detail="Unsupported file format.")
+        
+        temp_file_path = f"temp_{file.filename}"
+        with open(temp_file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
 
-    if user_input.startswith("/add "):
-        memory_context += "\n" + user_input.replace("/add ", "").strip()
-        print("Context saved.")
-        continue
+    try:
+        session = start_project_session(temp_file_path, extra_text)
+        
+        if session is None:
+            raise HTTPException(status_code=500, detail="Failed to create AI session.")
 
-    final_input = build_input(user_input)
+        final_prompt = build_input(extra_text) if extra_text else ""
+        if detect_distress(extra_text):
+            final_prompt = "IMPORTANT:\nThe user is experiencing financial difficulty. Respond in a supportive, calm, non-judgmental tone.\n" + final_prompt
 
-    if detect_distress(user_input):
-        final_input = "IMPORTANT:\nThe user is experiencing financial difficulty. Respond in a supportive, calm, non-judgmental tone.\n" + final_input
+        prompt = f"""
+        {final_prompt}
+        
+        Analyze the provided context immediately and provide the output in English, strictly following the structured rules defined in your System Instructions.
+        Additionally, return the final answer as valid JSON only using the specified schema.
+        Requirements: Return JSON only. Do not return Markdown. Do not use code fences.
+        """
+        
+        response = session.send_message(prompt)
+        return {"status": "success", "data": response.text.strip()}
 
-    if memory_context:
-        final_input += "\n\n[MEMORY CONTEXT]\n" + memory_context
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+        
+    finally:
+        if temp_file_path and os.path.exists(temp_file_path):
+            os.remove(temp_file_path)
 
-    response = session.send_message_stream(final_input)
-    for chunk in response:
-        print(chunk.text, end="", flush=True)
-    print()
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
