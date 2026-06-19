@@ -1,0 +1,6 @@
+{
+  "name": "University Financial Hold Assistant",
+  "description": "Upload a university document to understand your financial hold, balance due, deadlines, and next steps.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
