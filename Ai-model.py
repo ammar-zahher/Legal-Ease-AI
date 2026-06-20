@@ -260,8 +260,6 @@ async def analyze_document(
         {final_prompt}
         
         Analyze the provided context immediately and provide the output in English, strictly following the structured rules defined in your System Instructions.
-        Additionally, return the final answer as valid JSON only using the specified schema.
-        Requirements: Return JSON only. Do not return Markdown. Do not use code fences.
         """
         
         response = session.send_message(prompt)
