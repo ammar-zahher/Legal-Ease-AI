@@ -182,7 +182,6 @@ def build_input(user_input):
     distress = detect_distress(user_input)
     return f"\n[USER INTENT: {intent}]\n[USER DISTRESS: {distress}]\n\n{user_input}"
 
-# 4. دالة بدء الجلسة الخاصة بـ Gemini
 def start_project_session(file_path=None, extra_text=None):
     try:
         config = types.GenerateContentConfig(
