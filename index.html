@@ -1,13 +1,223 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>My Google AI Studio App</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
-</html>
 
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LegalEase AI - Enhanced</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        /* CSS: Enhanced Design System */
+        :root {
+            --bg-glow: #d1e9ff;
+            --input-bg: #f8f9fa;
+            --btn-blue: #a0d1f7;
+            --disclaimer-color: #202124;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: radial-gradient(circle at 50% 50%, var(--bg-glow) 0%, #ffffff 80%);
+            font-family: 'Google Sans', sans-serif;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        .main-ui {
+            width: 100%;
+            max-width: 700px;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .input-bar {
+            width: 90%;
+            height: 56px;
+            background: var(--input-bg);
+            border-radius: 30px;
+            display: flex;
+            align-items: center;
+            padding: 0 15px;
+            margin: 0 auto;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        .plus-btn {
+            width: 36px;
+            height: 36px;
+            background-color: var(--btn-blue);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            border: none;
+            font-size: 1.2rem;
+            color: #1a73e8;
+        }
+
+        .disclaimer {
+            margin-top: 5px;
+            color: var(--disclaimer-color);
+            font-size: 0.85rem;
+            font-weight: 500;
+            padding: 0 20px;
+        }
+
+        .send-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: #444746;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #fileInput {
+            display: none;
+        }
+
+        input[type="text"] {
+            flex-grow: 1;
+            border: none;
+            background: none;
+            outline: none;
+            font-size: 1.1rem;
+            padding: 0 15px;
+        }
+
+        .response-container {
+            display: none;
+            background-color: #ffffff;
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+            border: 1px solid #e1e3e1;
+            text-align: left;
+            line-height: 1.6;
+            font-size: 1.05rem;
+            color: #1f1f1f;
+        }
+
+        .response-container h1,
+        .response-container h2,
+        .response-container h3 {
+            color: #0b57d0;
+            margin-top: 16px;
+        }
+
+        .response-container ul,
+        .response-container ol {
+            padding-left: 20px;
+        }
+
+        .file-badge {
+            display: inline-block;
+            background: #e8f0fe;
+            color: #1a73e8;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="main-ui">
+        <h1 class="title" id="mainTitle">Your move</h1>
+
+        <div id="responseArea" class="response-container"></div>
+
+        <div class="input-bar">
+            <button class="plus-btn" id="plusBtn" onclick="document.getElementById('fileInput').click()">+</button>
+            <input type="file" id="fileInput" accept=".pdf,.txt,.png,.jpg,.jpeg" onchange="handleFile(this)">
+
+            <input type="text" id="chatInput" placeholder="Ask a legal question or upload a document...">
+
+            <button class="send-btn" id="sendBtn">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+                </svg>
+            </button>
+        </div>
+
+        <div id="fileBadgeArea"></div>
+
+        <div class="disclaimer">
+            LegalEase AI is not human. It may provide incorrect information, so we advise you to verify its responses.
+        </div>
+    </div>
+
+    <script>
+        let selectedFile = null;
+        let isFirstQuestion = true;
+
+        function handleFile(input) {
+            const file = input.files[0];
+            if (file) {
+                selectedFile = file;
+                document.getElementById('fileBadgeArea').innerHTML = `<span class="file-badge">📄 ${file.name} ready</span>`;
+            }
+        }
+
+        async function submitToAI() {
+            const chatInput = document.getElementById('chatInput');
+            const userText = chatInput.value;
+            const responseArea = document.getElementById('responseArea');
+            const plusBtn = document.getElementById('plusBtn');
+            const mainTitle = document.getElementById('mainTitle');
+
+            if (!userText && !selectedFile) return;
+
+            responseArea.style.display = 'block';
+            responseArea.innerHTML = '<span style="color: #666;">Analyzing context and researching official policies...</span>';
+
+            if (isFirstQuestion) {
+                plusBtn.style.display = 'none';
+                mainTitle.style.display = 'none';
+                isFirstQuestion = false;
+            }
+
+            const formData = new FormData();
+            if (userText) formData.append('extra_text', userText);
+            if (selectedFile) formData.append('file', selectedFile);
+
+            try {
+                const response = await fetch('http://127.0.0.1:8000/analyze', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    responseArea.innerHTML = marked.parse(result.data);
+                } else {
+                    responseArea.innerHTML = '<span style="color: #b3261e;">Error processing request.</span>';
+                }
+            } catch (error) {
+                responseArea.innerHTML = '<span style="color: #b3261e;">Could not connect to the backend server. Make sure your FastAPI app is running.</span>';
+            }
+
+            chatInput.value = '';
+            selectedFile = null;
+            document.getElementById('fileBadgeArea').innerHTML = '';
+            document.getElementById('fileInput').value = '';
+        }
+
+        document.getElementById('sendBtn').addEventListener('click', submitToAI);
+        document.getElementById('chatInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') submitToAI();
+        });
+    </script>
+</body>
+
+</html>
