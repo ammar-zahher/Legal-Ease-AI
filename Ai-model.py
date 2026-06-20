@@ -1,16 +1,17 @@
 import os
 import shutil
+from dotenv import load_dotenv
 import time
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from google import genai
 from google.genai import types
 
-API_KEY = os.environ.get("GEMINI_API_KEY")
-if not API_KEY:
-    API_KEY = "x"  
-
-client = genai.Client(api_key=API_KEY)
+load_dotenv()
+api_key = os.getenv("GEMINI_API_KEY")
+if not api_key:
+    raise ValueError("Error: GEMINI_API_KEY not found in .env file. Please add it.")  
+client = genai.Client(api_key=api_key)
 
 model_name = "gemini-2.5-flash"
 
