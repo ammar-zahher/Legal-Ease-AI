@@ -1,4 +1,5 @@
 import os
+import tempfile
 import shutil
 from dotenv import load_dotenv
 import time
@@ -133,6 +134,9 @@ def build_input(user_input):
     return f"\n[USER INTENT: {intent}]\n[USER DISTRESS: {distress}]\n\n{user_input}"
 
 def get_or_create_session(session_id, file_path=None, extra_text=None):
+    if file_path:
+        sessions.pop(session_id, None)
+
     if session_id in sessions:
         return sessions[session_id]
 
@@ -147,7 +151,10 @@ def get_or_create_session(session_id, file_path=None, extra_text=None):
         parts = []
         if file_path and os.path.exists(file_path):
             uploaded_file = client.files.upload(file=file_path)
+            start_time = time.time()
             while uploaded_file.state.name == "PROCESSING":
+                if time.time() - start_time > 60:
+                    raise Exception("Gemini file processing timeout")
                 time.sleep(2)
                 uploaded_file = client.files.get(name=uploaded_file.name)
             
@@ -201,12 +208,13 @@ async def analyze_document(
             shutil.copyfileobj(file.file, buffer)
 
     try:
+        is_new_session = session_id not in sessions
         session = get_or_create_session(session_id, temp_file_path, extra_text)
         
         if session is None:
             raise HTTPException(status_code=500, detail="Failed to create AI session.")
 
-        if session_id in sessions and not file:
+        if not is_new_session and not file:
             final_prompt = build_input(extra_text) if extra_text else "Please continue analyzing."
             if detect_distress(extra_text):
                 final_prompt = "IMPORTANT:\nThe user is experiencing financial difficulty.\n" + final_prompt
@@ -225,6 +233,3 @@ async def analyze_document(
         if temp_file_path and os.path.exists(temp_file_path):
             os.remove(temp_file_path)
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
