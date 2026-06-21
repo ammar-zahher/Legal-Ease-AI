@@ -34,10 +34,12 @@ async function startServer() {
 
       console.log("Sending request to Python AI Server...");
 
-      const pythonResponse = await axios.post("http://127.0.0.1:8000/analyze", formData, {
+      const pythonServerUrl = process.env.PYTHON_SERVER_URL || "http://127.0.0.1:8000";
+      const pythonResponse = await axios.post(`${pythonServerUrl}/analyze`, formData, {
         headers: {
           ...formData.getHeaders(),
         },
+
         maxContentLength: Infinity,
         maxBodyLength: Infinity,
       });
