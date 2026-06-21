@@ -180,10 +180,6 @@ def get_or_create_session(session_id, file_path=None, extra_text=None):
     except Exception as e:
         raise Exception(f"Initialization failed: {e}")
 
-app = FastAPI(title="LegalEase AI API")
-@app.get("/")
-def serve_home():
-    return FileResponse("index.html")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], 
