@@ -179,7 +179,7 @@ def get_or_create_session(session_id, file_path=None, extra_text=None):
 
     except Exception as e:
         raise Exception(f"Initialization failed: {e}")
-
+app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], 
